@@ -49,3 +49,12 @@ This sample gRPC server can be called as follows:
     "message": "Hello Tom; service=<K_SERVICE>, revision=<K_REVISION, project=<PROJECT_ID>, region=<REGION>"
   }
   ```
+
+## Upload the container image to your Artifact Registry repository
+
+```bash
+$ docker buildx create --name mybuilder --use --bootstrap
+$ docker buildx build --push \
+    --platform linux/amd64 \
+    --tag us-docker.pkg.dev/<GOOGLE_CLOUD_PROJECT_ID>/<REPOSITORY_NAME>/cloud-run-hello-grpc .
+```
