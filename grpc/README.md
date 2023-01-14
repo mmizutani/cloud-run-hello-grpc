@@ -50,11 +50,19 @@ This sample gRPC server can be called as follows:
   }
   ```
 
-## Upload the container image to your Artifact Registry repository
+## Deploy to Cloud Run with locally built image
 
 ```bash
 $ docker buildx create --name mybuilder --use --bootstrap
+$ IMAGE_TAG="us-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY_NAME}/cloud-run-hello-grpc"
 $ docker buildx build --push \
     --platform linux/amd64 \
-    --tag us-docker.pkg.dev/<GOOGLE_CLOUD_PROJECT_ID>/<REPOSITORY_NAME>/cloud-run-hello-grpc .
+    --tag $IMAGE_TAG .
+$ gcloud run deploy $SERVICE --platform=managed --project=$PROJECT_ID --region=$REGION --image=$IMAGE_TAG
+```
+
+## Deploy to Cloud Run without local build
+
+```bash
+gcloud run deploy $SERVICE --platform=managed --project=$PROJECT_ID --region=$REGION --source .
 ```
