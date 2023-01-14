@@ -112,7 +112,7 @@ func main() {
 		Region:   region,
 	}
 
-	port := 50051
+	port := 8080
 	portStr := os.Getenv("PORT")
 	if portStr != "" {
 		portInt, err := strconv.Atoi(portStr)
