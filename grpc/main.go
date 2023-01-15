@@ -6,16 +6,27 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
+	"time"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
+
 	echopb "google.golang.org/grpc/examples/features/proto/echo"
 	hwpb "google.golang.org/grpc/examples/helloworld/helloworld"
+
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	// "google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -112,40 +123,47 @@ func main() {
 		Region:   region,
 	}
 
-	port := 50051
-	portStr := os.Getenv("PORT")
-	if portStr != "" {
-		portInt, err := strconv.Atoi(portStr)
-		if err != nil {
-			log.Fatalf("failed to parse PORT env var %s: %v", portStr, err)
-		}
-		port = portInt
+	zapOpt := []grpc_zap.Option{
+		grpc_zap.WithDurationField(func(duration time.Duration) zapcore.Field {
+			return zap.Int64("grpc.time_ns", duration.Nanoseconds())
+		}),
 	}
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	grpc_zap.ReplaceGrpcLogger(logger)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	log.Printf("gRPC health check service starts listening on port %d", port)
-
-	s := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc_middleware.WithUnaryServerChain(
+			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
+			grpc_zap.UnaryServerInterceptor(logger, zapOpt...),
+		),
+	)
 
 	// Provides the gRPC service rpc grpc.health.v1.Health/Check
 	healthcheck := health.NewServer()
-	healthpb.RegisterHealthServer(s, healthcheck)
+	healthpb.RegisterHealthServer(server, healthcheck)
 
 	// Provides the gRPC service rpc grpc.examples.echo.Echo/UnaryEcho
-	echopb.RegisterEchoServer(s, &echoServer{})
+	echopb.RegisterEchoServer(server, &echoServer{})
 
 	// Provides the gRPC service rpc helloworld.Greeter/SayHello
 	greeter := &greeterServer{}
 	data.Service = "GreeterService"
 	greeter.data = data
-	hwpb.RegisterGreeterServer(s, greeter)
+	hwpb.RegisterGreeterServer(server, greeter)
 
-	reflection.Register(s)
+	reflection.Register(server)
 
-	if err := s.Serve(listener); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50051"
+	}
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	log.Printf("gRPC services start listening on port %s", port)
+	if err := server.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
